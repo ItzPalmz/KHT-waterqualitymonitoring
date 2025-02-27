@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/alertsFragment">
+
+    <fragment
+        android:id="@+id/alertsFragment"
+        android:name="com.example.waterqualitymonitoring.AlertsFragment"
+        android:label="Alerts"
+        tools:layout="@layout/fragment_alerts" />
+</navigation>
