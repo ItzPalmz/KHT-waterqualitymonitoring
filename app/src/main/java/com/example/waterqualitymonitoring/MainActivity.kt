@@ -1,13 +1,20 @@
 package com.example.watermonitoring
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import android.graphics.Color as AndroidColor
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose .ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -15,8 +22,15 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Info
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.MultiFormatWriter
+import com.google.zxing.common.BitMatrix
 import java.text.SimpleDateFormat
 import java.util.*
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.Alignment
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,7 +50,10 @@ fun NavigationComponent(navController: NavHostController) {
             AlertsScreen(navController)
         }
         composable("alert_logs") {
-            AlertLogsScreen()
+            AlertLogsScreen(navController)
+        }
+        composable("station_info") {
+            StationInfoScreen()
         }
     }
 }
@@ -47,9 +64,9 @@ fun AlertsScreen(navController: NavHostController) {
         Text(text = "Water Quality Monitoring", fontSize = 24.sp)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Only 1 Station (Example)
+        // Single Station Clickable
         Text(
-            text = "Station 1",
+            text = "Baan Mae Hat",
             fontSize = 20.sp,
             modifier = Modifier
                 .fillMaxWidth()
@@ -63,81 +80,173 @@ fun AlertsScreen(navController: NavHostController) {
 }
 
 @Composable
-fun AlertLogsScreen() {
+fun AlertLogsScreen(navController: NavHostController) {
     var searchQuery by remember { mutableStateOf(TextFieldValue("")) }
     var isLatestFirst by remember { mutableStateOf(true) }
+    val context = LocalContext.current
 
     Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = "Alert Logs - Station 1", fontSize = 24.sp)
+        // Row for the "Alert Logs - Station 1" text and info button
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(text = "Alert Logs - Baan Mae Hat", fontSize = 24.sp, modifier = Modifier.weight(1f))
+
+            // Info Button - Navigates to Station Info Screen
+            IconButton(onClick = { navController.navigate("station_info") }) {
+                Icon(imageVector = Icons.Default.Info, contentDescription = "Info")
+            }
+        }
         Spacer(modifier = Modifier.height(16.dp))
 
         // Search Bar
         OutlinedTextField(
             value = searchQuery,
-            onValueChange = {
-                searchQuery = it
-            },
+            onValueChange = { searchQuery = it },
             label = { Text("Search Alerts") },
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+        )
+
+        // Row for Sort Button and Export Button
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp)
-        )
-
-        // Filter Button
-        Button(
-            onClick = { isLatestFirst = !isLatestFirst },
-            modifier = Modifier.padding(bottom = 16.dp)
+                .padding(bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp) // Add space between buttons
         ) {
-            Text(text = if (isLatestFirst) "Show Oldest First" else "Show Latest First")
+            // Sort Button
+            Button(
+                onClick = { isLatestFirst = !isLatestFirst },
+                modifier = Modifier.weight(1f) // Allow buttons to fill available space
+            ) {
+                Text(text = if (isLatestFirst) "Show Oldest First" else "Show Latest First")
+            }
+
+            // Export Data Button
+            Button(
+                onClick = {
+                    val data = generateAlertCSV()
+                    shareData(context, data)
+                },
+                modifier = Modifier.weight(1f) // Allow buttons to fill available space
+            ) {
+                Text(text = "Export Data")
+            }
         }
 
-        // Sample Alert Logs with Detailed Format (Replace with real data)
+        // Sample Alerts
         val alertLogs = listOf(
-            "Station - 1 | E. coli - Present | Coliform - Present | 2025-02-25 14:30",
-            "Station - 1 | E. coli - Absent | Coliform - Present | 2025-02-24 10:20",
-            "Station - 1 | E. coli - Present | Coliform - Absent | 2025-02-23 09:15",
-            "Station - 1 | E. coli - Absent | Coliform - Absent | 2025-02-22 11:45",
-            "Station - 1 | E. coli - Present | Coliform - Present | 2025-02-21 08:05"
+            "Baan Mae Hat | E. coli - Present | Coliform - Present | 2025-02-25 14:30",
+            "Baan Mae Hat | E. coli - Absent | Coliform - Present | 2025-02-24 10:20",
+            "Baan Mae Hat | E. coli - Present | Coliform - Absent | 2025-02-23 09:15",
+            "Baan Mae Hat | E. coli - Absent | Coliform - Absent | 2025-02-22 11:45",
+            "Baan Mae Hat | E. coli - Present | Coliform - Present | 2025-02-21 08:05"
         )
 
-        // Parse dates and create Pair<Alert, Date>
+        // Sort Alerts
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         val parsedLogs = alertLogs.mapNotNull { log ->
             val datePart = log.substringAfterLast(" | ")
             val date = dateFormat.parse(datePart)
             if (date != null) Pair(log, date) else null
         }
-
-        // Sort Logs by Date
         val sortedLogs = if (isLatestFirst) {
             parsedLogs.sortedByDescending { it.second }
         } else {
             parsedLogs.sortedBy { it.second }
         }.map { it.first }
 
-        // Filtered List based on Search Query
-        val filteredLogs = sortedLogs.filter {
-            it.contains(searchQuery.text, ignoreCase = true)
-        }
+        // Filtered List
+        val filteredLogs = sortedLogs.filter { it.contains(searchQuery.text, ignoreCase = true) }
 
-        // Display Filtered and Sorted Results
+        // Display Alerts
         filteredLogs.forEach { log ->
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = log.split(" | ")[0], fontSize = 20.sp) // Station Info
+                    Text(text = log.split(" | ")[0], fontSize = 20.sp) // Station
                     Text(text = log.split(" | ")[1], fontSize = 18.sp) // E. coli Status
                     Text(text = log.split(" | ")[2], fontSize = 18.sp) // Coliform Status
-                    Text(
-                        text = "Timestamp: ${log.split(" | ")[3]}",
-                        fontSize = 14.sp
-                    ) // Timestamp
+                    Text(text = "Timestamp: ${log.split(" | ")[3]}", fontSize = 14.sp) // Time
                 }
             }
         }
     }
+}
+
+@Composable
+fun StationInfoScreen() {
+    // Directly generate the QR code when the screen loads
+    val qrCodeImage = generateQRCode("Baan Mae Hat")
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        Text(text = "Village Information", fontSize = 24.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Example Station Info (Village)
+        Text(text = "Village Name: Baan Mae Hat", fontSize = 20.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = "Location: 98.0329864 18.792253", fontSize = 18.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(text = "Description: ", fontSize = 18.sp)
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Display QR Code Image at the bottom and center it
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 32.dp), // Space from the bottom
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            qrCodeImage?.let {
+                Image(bitmap = it, contentDescription = "QR Code")
+            }
+        }
+    }
+}
+
+// Function to Generate CSV Data
+fun generateAlertCSV(): String {
+    val alerts = listOf(
+        "Baan Mae Hat, E. coli - Present, Coliform - Present, 2025-02-25 14:30",
+        "Baan Mae Hat, E. coli - Absent, Coliform - Present, 2025-02-24 10:20",
+        "Baan Mae Hat, E. coli - Present, Coliform - Absent, 2025-02-23 09:15",
+        "Baan Mae Hat, E. coli - Absent, Coliform - Absent, 2025-02-22 11:45",
+        "Baan Mae Hat, E. coli - Present, Coliform - Present, 2025-02-21 08:05"
+    )
+
+    val header = "Station, E. coli Status, Coliform Status, Timestamp"
+    return listOf(header).plus(alerts).joinToString("\n")
+}
+
+// Function to Share Data via Email or Other Apps
+fun shareData(context: Context, data: String) {
+    val intent = Intent(Intent.ACTION_SEND).apply {
+        type = "text/csv"
+        putExtra(Intent.EXTRA_SUBJECT, "Water Monitoring Alert Data")
+        putExtra(Intent.EXTRA_TEXT, "Here is the exported data:\n\n$data")
+    }
+    context.startActivity(Intent.createChooser(intent, "Export Data"))
+}
+
+// Function to Generate QR Code
+fun generateQRCode(data: String): ImageBitmap {
+    val writer = MultiFormatWriter()
+    val bitMatrix: BitMatrix = writer.encode(data, BarcodeFormat.QR_CODE, 700, 700) // Adjust size if needed
+    val width = bitMatrix.width
+    val height = bitMatrix.height
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.RGB_565)
+
+    for (x in 0 until width) {
+        for (y in 0 until height) {
+            // Use AndroidColor for the pixel color values
+            val color = if (bitMatrix[x, y]) AndroidColor.BLACK else AndroidColor.WHITE
+            bitmap.setPixel(x, y, color)
+        }
+    }
+
+    return bitmap.asImageBitmap()
 }

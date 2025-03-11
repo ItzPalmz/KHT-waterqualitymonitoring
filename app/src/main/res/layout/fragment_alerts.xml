@@ -17,9 +17,23 @@
         android:layout_height="wrap_content"
         android:queryHint="Search alerts..." />
 
+    <!-- Select All Checkbox -->
+    <CheckBox
+        android:id="@+id/checkboxSelectAll"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Select All"
+        android:paddingTop="8dp" />
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerViewAlerts"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingTop="8dp"/>
+
+    <Button
+        android:id="@+id/buttonExport"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Export" />
 </LinearLayout>
