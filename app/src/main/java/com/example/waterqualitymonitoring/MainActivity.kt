@@ -31,6 +31,12 @@ import java.text.SimpleDateFormat
 import java.util.*
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,23 +66,91 @@ fun NavigationComponent(navController: NavHostController) {
 
 @Composable
 fun AlertsScreen(navController: NavHostController) {
+    val context = LocalContext.current
+    val villageList = remember { mutableStateOf(readVillageData(context)) }
+    val textFieldValueSaver = listSaver<TextFieldValue, Any>(
+        save = { listOf(it.text, it.selection.start, it.selection.end) },
+        restore = { TextFieldValue(it[0] as String) }
+    )
+    var searchQuery by rememberSaveable(stateSaver = textFieldValueSaver) {
+        mutableStateOf(TextFieldValue(""))
+    }
+    // Filter villages based on search query
+    val filteredVillages = villageList.value.filter { village ->
+        village.first.contains(searchQuery.text, ignoreCase = true) ||
+                village.second.contains(searchQuery.text, ignoreCase = true)
+    }
+
     Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = "Water Quality Monitoring", fontSize = 24.sp)
+        Text(text = "Search Village", fontSize = 24.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // Search Bar
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Enter village name (English or Thai)") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Single Station Clickable
-        Text(
-            text = "Baan Mae Hat",
-            fontSize = 20.sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    navController.navigate("alert_logs")
+        LazyColumn {
+            items(filteredVillages) { village ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp)
+                        .clickable {
+                            // Navigate to the logs when a village is selected
+                            navController.navigate("alert_logs")
+                        },
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(text = village.first, fontSize = 20.sp) // Thai Name
+                        Text(text = village.second, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary) // English Name
+                    }
                 }
-                .padding(8.dp)
-        )
-        Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
     }
+}
+
+// Function to load village data from assets
+fun loadVillagesFromAssets(context: Context): List<Village> {
+    val assetManager = context.assets
+    return assetManager.open("village_info.txt").bufferedReader().useLines { lines ->
+        lines.mapNotNull { line ->
+            val parts = line.split("|")
+            if (parts.size >= 5) Village(parts[2].trim(), parts[4].trim().ifEmpty { null })
+            else null
+        }.toList()
+    }
+}
+
+data class Village(val name: String, val name_th: String?)
+
+fun readVillageData(context: Context): List<Pair<String, String>> {
+    val villageList = mutableListOf<Pair<String, String>>() // Store (Thai Name, English Name)
+    try {
+        val inputStream = context.assets.open("village_info.txt")
+        inputStream.bufferedReader().useLines { lines ->
+            lines.drop(1).forEach { line ->
+                val columns = line.split("|").map { it.trim() }
+                if (columns.size >= 5) { // Ensure valid data
+                    val nameTh = columns[2] // Thai name
+                    val nameEn = columns[3] // English name
+                    if (nameTh.isNotEmpty() && nameEn.isNotEmpty()) {
+                        villageList.add(Pair(nameTh, nameEn))
+                    }
+                }
+            }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return villageList
 }
 
 @Composable
