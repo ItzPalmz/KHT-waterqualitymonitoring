@@ -52,14 +52,75 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// Data class for alert logs
+data class AlertLog(
+    val villageName: String,
+    val eColiStatus: String,
+    val coliformStatus: String,
+    val timestamp: String
+)
+
+// Global object to store alert logs for each village
+object AlertLogStorage {
+    private val alertLogsByVillage = mutableMapOf<String, MutableList<AlertLog>>()
+
+    // Initialize with sample data
+    init {
+        // Sample data for Baan Mae Hat
+        val baanMaeHatLogs = mutableListOf(
+            AlertLog("Baan Mae Hat", "E. coli - Present", "Coliform - Present", "2025-02-25 14:30"),
+            AlertLog("Baan Mae Hat", "E. coli - Absent", "Coliform - Present", "2025-02-24 10:20"),
+            AlertLog("Baan Mae Hat", "E. coli - Present", "Coliform - Absent", "2025-02-23 09:15"),
+            AlertLog("Baan Mae Hat", "E. coli - Absent", "Coliform - Absent", "2025-02-22 11:45"),
+            AlertLog("Baan Mae Hat", "E. coli - Present", "Coliform - Present", "2025-02-21 08:05")
+        )
+        alertLogsByVillage["Baan Mae Hat"] = baanMaeHatLogs
+
+        // Sample data for some other villages
+        val baanMaeKhumLogs = mutableListOf(
+            AlertLog("Baan Mae Khum", "E. coli - Absent", "Coliform - Present", "2025-02-25 16:45"),
+            AlertLog("Baan Mae Khum", "E. coli - Present", "Coliform - Present", "2025-02-23 13:20")
+        )
+        alertLogsByVillage["Baan Mae Khum"] = baanMaeKhumLogs
+
+        val baanHuayluLogs = mutableListOf(
+            AlertLog("Baan Huaylu", "E. coli - Absent", "Coliform - Absent", "2025-02-24 09:10"),
+            AlertLog("Baan Huaylu", "E. coli - Present", "Coliform - Absent", "2025-02-22 14:55")
+        )
+        alertLogsByVillage["Baan Huaylu"] = baanHuayluLogs
+    }
+
+    // Get logs for a specific village
+    fun getLogsForVillage(villageName: String): List<AlertLog> {
+        return alertLogsByVillage[villageName] ?: emptyList()
+    }
+
+    // Get all logs
+    fun getAllLogs(): List<AlertLog> {
+        return alertLogsByVillage.values.flatten()
+    }
+
+    // Add a new log
+    fun addLog(log: AlertLog) {
+        val logsForVillage = alertLogsByVillage.getOrPut(log.villageName) { mutableListOf() }
+        logsForVillage.add(log)
+    }
+}
+
 @Composable
 fun NavigationComponent(navController: NavHostController) {
     NavHost(navController = navController, startDestination = "alerts") {
         composable("alerts") {
             AlertsScreen(navController)
         }
-        composable("alert_logs") {
-            AlertLogsScreen(navController)
+        composable(
+            "alert_logs/{villageName}",
+            arguments = listOf(
+                navArgument("villageName") { type = NavType.StringType }
+            )
+        ) { backStackEntry ->
+            val villageName = backStackEntry.arguments?.getString("villageName") ?: "Unknown"
+            AlertLogsScreen(navController, villageName)
         }
         composable(
             "station_info/{villageName}/{villageNameTh}/{location}",
@@ -166,7 +227,9 @@ fun AlertsScreen(navController: NavHostController) {
                             modifier = Modifier
                                 .weight(1f)
                                 .clickable {
-                                    navController.navigate("alert_logs")
+                                    // Encode the village name for navigation
+                                    val encodedVillageName = java.net.URLEncoder.encode(village.name, "UTF-8")
+                                    navController.navigate("alert_logs/$encodedVillageName")
                                 }
                         ) {
                             Text(text = village.name_th ?: "", fontSize = 20.sp) // Thai Name
@@ -200,10 +263,22 @@ fun AlertsScreen(navController: NavHostController) {
 }
 
 @Composable
-fun AlertLogsScreen(navController: NavHostController) {
+fun AlertLogsScreen(navController: NavHostController, villageName: String) {
+    // Decode the village name
+    val decodedVillageName = java.net.URLDecoder.decode(villageName, "UTF-8")
+
     var searchQuery by remember { mutableStateOf(TextFieldValue("")) }
     var isLatestFirst by remember { mutableStateOf(true) }
     val context = LocalContext.current
+
+    // Get logs for the specific village
+    val alertLogs = remember { AlertLogStorage.getLogsForVillage(decodedVillageName) }
+
+    // Get Thai name for the village if available
+    val thaiName = remember {
+        val villageList = readVillageData(context)
+        villageList.find { it.name == decodedVillageName }?.name_th ?: ""
+    }
 
     Column(modifier = Modifier.padding(16.dp)) {
         // Row for the "Alert Logs - Station 1" text and info button
@@ -211,16 +286,11 @@ fun AlertLogsScreen(navController: NavHostController) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(text = "Alert Logs - Baan Mae Hat", fontSize = 24.sp, modifier = Modifier.weight(1f))
-
-            // Info Button - Navigates to Station Info Screen
-            IconButton(onClick = {
-                navController.navigate(
-                    "station_info/${java.net.URLEncoder.encode("Baan Mae Hat", "UTF-8")}/${java.net.URLEncoder.encode("บ้านแม่หาด", "UTF-8")}/98.0329864 18.792253"
-                )
-            }) {
-                Icon(imageVector = Icons.Default.Info, contentDescription = "Info")
-            }
+            Text(
+                text = "Alert Logs - $decodedVillageName",
+                fontSize = 24.sp,
+                modifier = Modifier.weight(1f)
+            )
         }
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -250,8 +320,8 @@ fun AlertLogsScreen(navController: NavHostController) {
             // Export Data Button
             Button(
                 onClick = {
-                    val data = generateAlertCSV()
-                    shareData(context, data)
+                    val data = generateAlertCSV(decodedVillageName)
+                    shareData(context, data, decodedVillageName)
                 },
                 modifier = Modifier.weight(1f) // Allow buttons to fill available space
             ) {
@@ -259,22 +329,13 @@ fun AlertLogsScreen(navController: NavHostController) {
             }
         }
 
-        // Sample Alerts
-        val alertLogs = listOf(
-            "Baan Mae Hat | E. coli - Present | Coliform - Present | 2025-02-25 14:30",
-            "Baan Mae Hat | E. coli - Absent | Coliform - Present | 2025-02-24 10:20",
-            "Baan Mae Hat | E. coli - Present | Coliform - Absent | 2025-02-23 09:15",
-            "Baan Mae Hat | E. coli - Absent | Coliform - Absent | 2025-02-22 11:45",
-            "Baan Mae Hat | E. coli - Present | Coliform - Present | 2025-02-21 08:05"
-        )
-
         // Sort Alerts
         val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
         val parsedLogs = alertLogs.mapNotNull { log ->
-            val datePart = log.substringAfterLast(" | ")
-            val date = dateFormat.parse(datePart)
+            val date = dateFormat.parse(log.timestamp)
             if (date != null) Pair(log, date) else null
         }
+
         val sortedLogs = if (isLatestFirst) {
             parsedLogs.sortedByDescending { it.second }
         } else {
@@ -282,19 +343,34 @@ fun AlertLogsScreen(navController: NavHostController) {
         }.map { it.first }
 
         // Filtered List
-        val filteredLogs = sortedLogs.filter { it.contains(searchQuery.text, ignoreCase = true) }
+        val filteredLogs = sortedLogs.filter { log ->
+            log.eColiStatus.contains(searchQuery.text, ignoreCase = true) ||
+                    log.coliformStatus.contains(searchQuery.text, ignoreCase = true) ||
+                    log.timestamp.contains(searchQuery.text, ignoreCase = true)
+        }
 
         // Display Alerts
-        filteredLogs.forEach { log ->
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(text = log.split(" | ")[0], fontSize = 20.sp) // Station
-                    Text(text = log.split(" | ")[1], fontSize = 18.sp) // E. coli Status
-                    Text(text = log.split(" | ")[2], fontSize = 18.sp) // Coliform Status
-                    Text(text = "Timestamp: ${log.split(" | ")[3]}", fontSize = 14.sp) // Time
+        if (filteredLogs.isEmpty()) {
+            // Show a message if no logs are available
+            Text(
+                text = "No alert logs available for this village",
+                fontSize = 18.sp,
+                modifier = Modifier.padding(top = 32.dp).align(Alignment.CenterHorizontally)
+            )
+        } else {
+            LazyColumn {
+                items(filteredLogs) { log ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Text(text = log.villageName, fontSize = 20.sp) // Station
+                            Text(text = log.eColiStatus, fontSize = 18.sp) // E. coli Status
+                            Text(text = log.coliformStatus, fontSize = 18.sp) // Coliform Status
+                            Text(text = "Timestamp: ${log.timestamp}", fontSize = 14.sp) // Time
+                        }
+                    }
                 }
             }
         }
@@ -343,26 +419,28 @@ fun StationInfoScreen(villageName: String, villageNameTh: String, location: Stri
     }
 }
 
-// Function to Generate CSV Data
-fun generateAlertCSV(): String {
-    val alerts = listOf(
-        "Baan Mae Hat, E. coli - Present, Coliform - Present, 2025-02-25 14:30",
-        "Baan Mae Hat, E. coli - Absent, Coliform - Present, 2025-02-24 10:20",
-        "Baan Mae Hat, E. coli - Present, Coliform - Absent, 2025-02-23 09:15",
-        "Baan Mae Hat, E. coli - Absent, Coliform - Absent, 2025-02-22 11:45",
-        "Baan Mae Hat, E. coli - Present, Coliform - Present, 2025-02-21 08:05"
-    )
+// Updated Function to Generate CSV Data for a specific village
+fun generateAlertCSV(villageName: String): String {
+    val logs = AlertLogStorage.getLogsForVillage(villageName)
 
+    // Create CSV header
     val header = "Station, E. coli Status, Coliform Status, Timestamp"
-    return listOf(header).plus(alerts).joinToString("\n")
+
+    // Create CSV rows for each log
+    val rows = logs.map { log ->
+        "${log.villageName}, ${log.eColiStatus}, ${log.coliformStatus}, ${log.timestamp}"
+    }
+
+    // Combine header and rows into a CSV string
+    return listOf(header).plus(rows).joinToString("\n")
 }
 
-// Function to Share Data via Email or Other Apps
-fun shareData(context: Context, data: String) {
+// Updated Function to Share Data via Email or Other Apps
+fun shareData(context: Context, data: String, villageName: String) {
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "text/csv"
-        putExtra(Intent.EXTRA_SUBJECT, "Water Monitoring Alert Data")
-        putExtra(Intent.EXTRA_TEXT, "Here is the exported data:\n\n$data")
+        putExtra(Intent.EXTRA_SUBJECT, "Water Monitoring Alert Data - $villageName")
+        putExtra(Intent.EXTRA_TEXT, "Here is the exported data for $villageName:\n\n$data")
     }
     context.startActivity(Intent.createChooser(intent, "Export Data"))
 }
