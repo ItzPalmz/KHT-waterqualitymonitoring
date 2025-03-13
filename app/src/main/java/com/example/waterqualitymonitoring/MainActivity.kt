@@ -13,7 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import android.graphics.Color as AndroidColor
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose .ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
@@ -24,6 +24,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.ArrowForward
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.MultiFormatWriter
 import com.google.zxing.common.BitMatrix
@@ -36,6 +37,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 
 
 class MainActivity : ComponentActivity() {
@@ -58,10 +61,58 @@ fun NavigationComponent(navController: NavHostController) {
         composable("alert_logs") {
             AlertLogsScreen(navController)
         }
-        composable("station_info") {
-            StationInfoScreen()
+        composable(
+            "station_info/{villageName}/{villageNameTh}/{location}",
+            arguments = listOf(
+                navArgument("villageName") { type = NavType.StringType },
+                navArgument("villageNameTh") { type = NavType.StringType },
+                navArgument("location") { type = NavType.StringType; defaultValue = "Unknown" }
+            )
+        ) { backStackEntry ->
+            val villageName = backStackEntry.arguments?.getString("villageName") ?: "Unknown"
+            val villageNameTh = backStackEntry.arguments?.getString("villageNameTh") ?: "Unknown"
+            val location = backStackEntry.arguments?.getString("location") ?: "Unknown"
+            StationInfoScreen(villageName, villageNameTh, location)
         }
     }
+}
+
+// Extended data class to store village information
+data class Village(
+    val name: String,
+    val name_th: String?,
+    val location: String = "Unknown"
+)
+
+fun readVillageData(context: Context): List<Village> {
+    val villageList = mutableListOf<Village>()
+    try {
+        val inputStream = context.assets.open("village_info.txt")
+        inputStream.bufferedReader().useLines { lines ->
+            lines.drop(1).forEach { line ->
+                val columns = line.split("|").map { it.trim() }
+                if (columns.size >= 7) { // Ensure we have enough columns including st_astext
+                    val nameTh = columns[2] // Thai name
+                    val nameEn = columns[3] // English name
+                    // Extract location from st_astext (column 6)
+                    val stAsText = columns[6]
+                    // Extract coordinates from POINT format if available
+                    val location = if (stAsText.startsWith("POINT")) {
+                        stAsText.replace("POINT(", "").replace(")", "")
+                    } else {
+                        "Unknown"
+                    }
+
+                    if (nameEn.isNotEmpty()) {
+                        villageList.add(Village(nameEn, nameTh, location))
+                    }
+                }
+            }
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+    return villageList
 }
 
 @Composable
@@ -77,8 +128,8 @@ fun AlertsScreen(navController: NavHostController) {
     }
     // Filter villages based on search query
     val filteredVillages = villageList.value.filter { village ->
-        village.first.contains(searchQuery.text, ignoreCase = true) ||
-                village.second.contains(searchQuery.text, ignoreCase = true)
+        village.name.contains(searchQuery.text, ignoreCase = true) ||
+                (village.name_th?.contains(searchQuery.text, ignoreCase = true) ?: false)
     }
 
     Column(modifier = Modifier.padding(16.dp)) {
@@ -100,57 +151,52 @@ fun AlertsScreen(navController: NavHostController) {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(8.dp)
-                        .clickable {
-                            // Navigate to the logs when a village is selected
-                            navController.navigate("alert_logs")
-                        },
+                        .padding(8.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                 ) {
-                    Column(modifier = Modifier.padding(16.dp)) {
-                        Text(text = village.first, fontSize = 20.sp) // Thai Name
-                        Text(text = village.second, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary) // English Name
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Village info section (clickable to go to logs)
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    navController.navigate("alert_logs")
+                                }
+                        ) {
+                            Text(text = village.name_th ?: "", fontSize = 20.sp) // Thai Name
+                            Text(text = village.name, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary) // English Name
+                        }
+
+                        // Detail button - using Text button instead of IconButton with unavailable icon
+                        Button(
+                            onClick = {
+                                // Encode parameters for navigation
+                                val encodedName = java.net.URLEncoder.encode(village.name, "UTF-8")
+                                val encodedNameTh = java.net.URLEncoder.encode(village.name_th ?: "", "UTF-8")
+                                val encodedLocation = java.net.URLEncoder.encode(village.location, "UTF-8")
+
+                                // Navigate to station info with village details
+                                navController.navigate("station_info/$encodedName/$encodedNameTh/$encodedLocation")
+                            }
+                        ) {
+                            Text("Details")
+                            Icon(
+                                imageVector = Icons.Default.ArrowForward,
+                                contentDescription = "See village details",
+                                modifier = Modifier.padding(start = 4.dp)
+                            )
+                        }
                     }
                 }
             }
         }
     }
-}
-
-// Function to load village data from assets
-fun loadVillagesFromAssets(context: Context): List<Village> {
-    val assetManager = context.assets
-    return assetManager.open("village_info.txt").bufferedReader().useLines { lines ->
-        lines.mapNotNull { line ->
-            val parts = line.split("|")
-            if (parts.size >= 5) Village(parts[2].trim(), parts[4].trim().ifEmpty { null })
-            else null
-        }.toList()
-    }
-}
-
-data class Village(val name: String, val name_th: String?)
-
-fun readVillageData(context: Context): List<Pair<String, String>> {
-    val villageList = mutableListOf<Pair<String, String>>() // Store (Thai Name, English Name)
-    try {
-        val inputStream = context.assets.open("village_info.txt")
-        inputStream.bufferedReader().useLines { lines ->
-            lines.drop(1).forEach { line ->
-                val columns = line.split("|").map { it.trim() }
-                if (columns.size >= 5) { // Ensure valid data
-                    val nameTh = columns[2] // Thai name
-                    val nameEn = columns[3] // English name
-                    if (nameTh.isNotEmpty() && nameEn.isNotEmpty()) {
-                        villageList.add(Pair(nameTh, nameEn))
-                    }
-                }
-            }
-        }
-    } catch (e: Exception) {
-        e.printStackTrace()
-    }
-    return villageList
 }
 
 @Composable
@@ -168,7 +214,11 @@ fun AlertLogsScreen(navController: NavHostController) {
             Text(text = "Alert Logs - Baan Mae Hat", fontSize = 24.sp, modifier = Modifier.weight(1f))
 
             // Info Button - Navigates to Station Info Screen
-            IconButton(onClick = { navController.navigate("station_info") }) {
+            IconButton(onClick = {
+                navController.navigate(
+                    "station_info/${java.net.URLEncoder.encode("Baan Mae Hat", "UTF-8")}/${java.net.URLEncoder.encode("บ้านแม่หาด", "UTF-8")}/98.0329864 18.792253"
+                )
+            }) {
                 Icon(imageVector = Icons.Default.Info, contentDescription = "Info")
             }
         }
@@ -252,19 +302,30 @@ fun AlertLogsScreen(navController: NavHostController) {
 }
 
 @Composable
-fun StationInfoScreen() {
-    // Directly generate the QR code when the screen loads
-    val qrCodeImage = generateQRCode("Baan Mae Hat")
+fun StationInfoScreen(villageName: String, villageNameTh: String, location: String) {
+    // Decode the URL-encoded parameters
+    val decodedVillageName = java.net.URLDecoder.decode(villageName, "UTF-8")
+    val decodedVillageNameTh = java.net.URLDecoder.decode(villageNameTh, "UTF-8")
+    val decodedLocation = java.net.URLDecoder.decode(location, "UTF-8")
+
+    // Generate the QR code with the decoded village name
+    val qrCodeImage = generateQRCode(decodedVillageName)
 
     Column(modifier = Modifier.padding(16.dp)) {
         Text(text = "Village Information", fontSize = 24.sp)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Example Station Info (Village)
-        Text(text = "Village Name: Baan Mae Hat", fontSize = 20.sp)
+        // Display decoded village information
+        Text(text = "Village Name: $decodedVillageName", fontSize = 20.sp)
         Spacer(modifier = Modifier.height(8.dp))
-        Text(text = "Location: 98.0329864 18.792253", fontSize = 18.sp)
+
+        Text(text = "Thai Name: $decodedVillageNameTh", fontSize = 20.sp)
         Spacer(modifier = Modifier.height(8.dp))
+
+        // Format the location coordinates more nicely
+        Text(text = "Coordinates: $decodedLocation", fontSize = 18.sp)
+        Spacer(modifier = Modifier.height(8.dp))
+
         Text(text = "Description: ", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -276,7 +337,7 @@ fun StationInfoScreen() {
             contentAlignment = Alignment.BottomCenter
         ) {
             qrCodeImage?.let {
-                Image(bitmap = it, contentDescription = "QR Code")
+                Image(bitmap = it, contentDescription = "QR Code for $decodedVillageName")
             }
         }
     }
