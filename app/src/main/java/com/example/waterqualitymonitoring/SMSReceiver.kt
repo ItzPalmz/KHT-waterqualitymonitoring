@@ -1,46 +1,39 @@
-package com.example.waterqualitymonitoring
+package com.example.watermonitoring
 
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import java.util.regex.Pattern
+import android.util.Log
 
-class SMSReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION) {
+class SmsReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context?, intent: Intent?) {
+        if (intent?.action == Telephony.Sms.Intents.SMS_RECEIVED_ACTION) {
             val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent)
-            messages.forEach { smsMessage ->
-                val messageBody = smsMessage.messageBody
-                parseAndSaveAlert(context, messageBody)
+            for (sms in messages) {
+                val messageBody = sms.messageBody
+                Log.d("SmsReceiver", "Received SMS: $messageBody")
+
+                // Process SMS content
+                processReceivedSms(context, messageBody)
             }
         }
     }
 
-    private fun parseAndSaveAlert(context: Context, message: String) {
-        val stationPattern = Pattern.compile("Station #(\\d+)")
-        val eColiPattern = Pattern.compile("E. coli - (\\w+)")
-        val coliformPattern = Pattern.compile("Coliform - (\\w+)")
+    private fun processReceivedSms(context: Context?, message: String) {
+        val parts = message.split(",").map { it.trim() }
+        if (parts.size == 4) {
+            val villageName = parts[0]
+            val eColiStatus = if (parts[1] == "1") "E. coli - Present" else "E. coli - Absent"
+            val coliformStatus = if (parts[2] == "1") "Coliform - Present" else "Coliform - Absent"
+            val timestamp = parts[3]
 
-        val stationMatcher = stationPattern.matcher(message)
-        val eColiMatcher = eColiPattern.matcher(message)
-        val coliformMatcher = coliformPattern.matcher(message)
+            val newAlert = AlertLog(villageName, eColiStatus, coliformStatus, timestamp)
+            AlertLogStorage.addLog(newAlert)
 
-        if (stationMatcher.find() && eColiMatcher.find() && coliformMatcher.find()) {
-            val alert = WaterAlert(
-                id = 0, // Database will auto-generate
-                stationNumber = stationMatcher.group(1).toInt(),
-                eColi = eColiMatcher.group(1),
-                coliform = coliformMatcher.group(1),
-                timestamp = System.currentTimeMillis(),
-                rawMessage = message
-            )
-
-            val db = DatabaseHelper(context)
-            db.addAlert(alert)
-
-            // Broadcast to update UI
-            context.sendBroadcast(Intent("com.watermonitoring.NEW_ALERT"))
+            Log.d("SmsReceiver", "Alert added: $newAlert")
+        } else {
+            Log.e("SmsReceiver", "Invalid SMS format: $message")
         }
     }
 }

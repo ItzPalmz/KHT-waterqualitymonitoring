@@ -39,15 +39,40 @@ import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
-
+import android.Manifest
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : ComponentActivity() {
+    private lateinit var smsReceiver: SmsReceiver
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        //Request SMS permission
+        requestSmsPermission()
+
+        //Register SMS receiver
+        smsReceiver = SmsReceiver()
+        val filter = IntentFilter("android.provider.Telephony.SMS_RECEIVED")
+        registerReceiver(smsReceiver, filter)
 
         setContent {
             val navController = rememberNavController()
             NavigationComponent(navController)
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        unregisterReceiver(smsReceiver)
+    }
+
+    private fun requestSmsPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS)
+            != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.RECEIVE_SMS), 1)
         }
     }
 }
@@ -64,30 +89,18 @@ data class AlertLog(
 object AlertLogStorage {
     private val alertLogsByVillage = mutableMapOf<String, MutableList<AlertLog>>()
 
-    // Initialize with sample data
+    // Initialize with sample data for multiple villages
     init {
         // Sample data for Baan Mae Hat
-        val baanMaeHatLogs = mutableListOf(
-            AlertLog("Baan Mae Hat", "E. coli - Present", "Coliform - Present", "2025-02-25 14:30"),
-            AlertLog("Baan Mae Hat", "E. coli - Absent", "Coliform - Present", "2025-02-24 10:20"),
-            AlertLog("Baan Mae Hat", "E. coli - Present", "Coliform - Absent", "2025-02-23 09:15"),
-            AlertLog("Baan Mae Hat", "E. coli - Absent", "Coliform - Absent", "2025-02-22 11:45"),
-            AlertLog("Baan Mae Hat", "E. coli - Present", "Coliform - Present", "2025-02-21 08:05")
+        val banMaeHatLogs = mutableListOf(
+            AlertLog("Ban Mae Hat", "E. coli - Present", "Coliform - Present", "2025-03-12 14:30"),
+            AlertLog("Ban Mae Hat", "E. coli - Absent", "Coliform - Present", "2025-03-10 10:20"),
+            AlertLog("Ban Mae Hat", "E. coli - Present", "Coliform - Absent", "2025-03-07 09:15"),
+            AlertLog("Ban Mae Hat", "E. coli - Absent", "Coliform - Absent", "2025-03-02 11:45"),
+            AlertLog("Ban Mae Hat", "E. coli - Present", "Coliform - Present", "2025-02-26 08:05")
         )
-        alertLogsByVillage["Baan Mae Hat"] = baanMaeHatLogs
+        alertLogsByVillage["Ban Mae Hat"] = banMaeHatLogs
 
-        // Sample data for some other villages
-        val baanMaeKhumLogs = mutableListOf(
-            AlertLog("Baan Mae Khum", "E. coli - Absent", "Coliform - Present", "2025-02-25 16:45"),
-            AlertLog("Baan Mae Khum", "E. coli - Present", "Coliform - Present", "2025-02-23 13:20")
-        )
-        alertLogsByVillage["Baan Mae Khum"] = baanMaeKhumLogs
-
-        val baanHuayluLogs = mutableListOf(
-            AlertLog("Baan Huaylu", "E. coli - Absent", "Coliform - Absent", "2025-02-24 09:10"),
-            AlertLog("Baan Huaylu", "E. coli - Present", "Coliform - Absent", "2025-02-22 14:55")
-        )
-        alertLogsByVillage["Baan Huaylu"] = baanHuayluLogs
     }
 
     // Get logs for a specific village
@@ -463,3 +476,4 @@ fun generateQRCode(data: String): ImageBitmap {
 
     return bitmap.asImageBitmap()
 }
+
