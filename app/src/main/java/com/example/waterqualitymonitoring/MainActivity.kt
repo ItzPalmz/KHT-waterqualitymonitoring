@@ -44,7 +44,8 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
-
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 class MainActivity : ComponentActivity() {
     private lateinit var smsReceiver: SmsReceiver
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -207,14 +208,34 @@ fun AlertsScreen(navController: NavHostController) {
     }
 
     Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = "Search Village", fontSize = 24.sp)
-        Spacer(modifier = Modifier.height(8.dp))
+        // **App Logo and Name**
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            // Load and display the logo
+            Image(
+                painter = painterResource(id = R.drawable.logo), // Make sure your logo is in res/drawable
+                contentDescription = "App Logo",
+                modifier = Modifier
+                    .size(100.dp) // Adjust the size as needed
+                    .padding(bottom = 8.dp)
+            )
+            // App Name
+            Text(
+                text = "KHT - Water Monitoring",
+                fontSize = 24.sp,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
 
         // Search Bar
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            label = { Text("Enter village name (English or Thai)") },
+            label = { Text("Search village name (English or Thai)") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -249,7 +270,7 @@ fun AlertsScreen(navController: NavHostController) {
                             Text(text = village.name, fontSize = 18.sp, color = MaterialTheme.colorScheme.primary) // English Name
                         }
 
-                        // Detail button - using Text button instead of IconButton with unavailable icon
+                        // Detail button
                         Button(
                             onClick = {
                                 // Encode parameters for navigation
@@ -274,6 +295,7 @@ fun AlertsScreen(navController: NavHostController) {
         }
     }
 }
+
 
 @Composable
 fun AlertLogsScreen(navController: NavHostController, villageName: String) {
@@ -300,7 +322,7 @@ fun AlertLogsScreen(navController: NavHostController, villageName: String) {
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "Alert Logs - $decodedVillageName",
+                text = "Water Logs - $decodedVillageName",
                 fontSize = 24.sp,
                 modifier = Modifier.weight(1f)
             )
@@ -392,38 +414,52 @@ fun AlertLogsScreen(navController: NavHostController, villageName: String) {
 
 @Composable
 fun StationInfoScreen(villageName: String, villageNameTh: String, location: String) {
-    // Decode the URL-encoded parameters
     val decodedVillageName = java.net.URLDecoder.decode(villageName, "UTF-8")
     val decodedVillageNameTh = java.net.URLDecoder.decode(villageNameTh, "UTF-8")
     val decodedLocation = java.net.URLDecoder.decode(location, "UTF-8")
 
-    // Generate the QR code with the decoded village name
-    val qrCodeImage = generateQRCode(decodedVillageName)
+    var isFiltered by remember { mutableStateOf(true) } // Toggle between filtered and unfiltered QR codes
+
+    val qrCodeImage = if (isFiltered) {
+        generateQRCode("$decodedVillageName - filtered")
+    } else {
+        generateQRCode("$decodedVillageName - unfiltered")
+    }
 
     Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = "Village Information", fontSize = 24.sp)
+        Text(
+            text = "Village Information",
+            fontSize = 24.sp,
+            fontWeight = FontWeight.Bold
+        )
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Display decoded village information
         Text(text = "Village Name: $decodedVillageName", fontSize = 20.sp)
-        Spacer(modifier = Modifier.height(8.dp))
-
         Text(text = "Thai Name: $decodedVillageNameTh", fontSize = 20.sp)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Format the location coordinates more nicely
         Text(text = "Coordinates: $decodedLocation", fontSize = 18.sp)
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Text(text = "Description: ", fontSize = 18.sp)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Display QR Code Image at the bottom and center it
+        // Center the buttons by using fillMaxWidth and Arrangement.Center
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Button(onClick = { isFiltered = true }) {
+                Text("Filtered")
+            }
+            Spacer(modifier = Modifier.width(10.dp)) // Add space between buttons
+            Button(onClick = { isFiltered = false }) {
+                Text("Unfiltered")
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = 32.dp), // Space from the bottom
-            contentAlignment = Alignment.BottomCenter
+                .padding(bottom = 32.dp),
+            contentAlignment = Alignment.Center
         ) {
             qrCodeImage?.let {
                 Image(bitmap = it, contentDescription = "QR Code for $decodedVillageName")
@@ -432,12 +468,13 @@ fun StationInfoScreen(villageName: String, villageNameTh: String, location: Stri
     }
 }
 
+
 // Updated Function to Generate CSV Data for a specific village
 fun generateAlertCSV(villageName: String): String {
     val logs = AlertLogStorage.getLogsForVillage(villageName)
 
     // Create CSV header
-    val header = "Station, E. coli Status, Coliform Status, Timestamp"
+    val header = "Village Name, E. coli Status, Coliform Status, Timestamp"
 
     // Create CSV rows for each log
     val rows = logs.map { log ->

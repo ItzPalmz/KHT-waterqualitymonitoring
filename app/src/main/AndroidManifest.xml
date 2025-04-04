@@ -30,7 +30,7 @@
 
         <!-- Add SMS Receiver -->
         <receiver
-            android:name="com.example.waterqualitymonitoring.SMSReceiver"
+            android:name=".SmsReceiver"
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.BROADCAST_SMS">
