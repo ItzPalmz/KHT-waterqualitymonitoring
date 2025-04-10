@@ -54,21 +54,12 @@ class MainActivity : ComponentActivity() {
         //Request SMS permission
         requestSmsPermission()
 
-        //Register SMS receiver
-        smsReceiver = SmsReceiver()
-        val filter = IntentFilter("android.provider.Telephony.SMS_RECEIVED")
-        registerReceiver(smsReceiver, filter)
-
         setContent {
             val navController = rememberNavController()
             NavigationComponent(navController)
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        unregisterReceiver(smsReceiver)
-    }
 
     private fun requestSmsPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS)
