@@ -223,7 +223,7 @@ fun AlertsScreen(navController: NavHostController) {
             )
             // App Name
             Text(
-                text = "KHT - Water Monitoring",
+                text = "KHT - Water Quality Monitoring",
                 fontSize = 24.sp,
                 color = MaterialTheme.colorScheme.primary
             )
